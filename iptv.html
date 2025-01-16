@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPTV Uygulaması</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script> <!-- HLS.js Kütüphanesi -->
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #1c1c1c;
+            color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #topBar {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background-color: #333;
+        }
+
+        #fileInput {
+            background-color: #ff5722;
+            color: white;
+            border: none;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        #toggleChannelList {
+            background-color: #ff5722;
+            color: white;
+            border: none;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        #mainContainer {
+            display: flex;
+            flex: 1;
+            transition: all 0.3s ease;
+        }
+
+        #channelsContainer {
+            width: 0;
+            background-color: #1c1c1c;
+            overflow-y: auto;
+            transition: width 0.3s ease;
+            padding: 10px;
+        }
+
+        #videoContainer {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #channels {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        #channels li {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #channels li:hover {
+            background-color: #ff5722;
+        }
+
+        #videoPlayer {
+            width: 80%;
+            max-width: 720px;
+            height: 400px;
+            background-color: #000;
+            border-radius: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 18px;
+            color: #ff5722;
+            display: none;
+        }
+
+        .error {
+            color: #f44336;
+            font-size: 16px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .pagination button {
+            background-color: #ff5722;
+            color: white;
+            border: none;
+            padding: 10px;
+            margin: 0 5px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+
+        .pagination button:hover {
+            background-color: #e64a19;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="topBar">
+        <input type="file" id="fileInput" accept=".m3u">
+        <button id="toggleChannelList">Kanal Listesini Aç</button>
+    </div>
+
+    <div id="mainContainer">
+        <div id="channelsContainer">
+            <ul id="channels">
+                <!-- Kanal listesi buraya yüklenecek -->
+            </ul>
+            <div class="pagination">
+                <button id="prevPage">&lt; Önceki</button>
+                <button id="nextPage">Sonraki &gt;</button>
+            </div>
+        </div>
+        <div id="videoContainer">
+            <video id="videoPlayer" controls>
+                <source id="videoSource" type="application/x-mpegURL">
+            </video>
+        </div>
+    </div>
+
+    <div id="loading" class="loading">Kanallar Yükleniyor...</div>
+    <div id="error" class="error"></div>
+
+    <script>
+        let channels = [];
+        let currentPage = 0;
+        const itemsPerPage = 8;
+
+        document.getElementById('toggleChannelList').addEventListener('click', function() {
+            const channelsContainer = document.getElementById('channelsContainer');
+            const videoContainer = document.getElementById('videoContainer');
+            if (channelsContainer.style.width === '0px' || channelsContainer.style.width === '') {
+                channelsContainer.style.width = '30%';
+                videoContainer.style.flex = '70%';
+            } else {
+                channelsContainer.style.width = '0';
+                videoContainer.style.flex = '1';
+            }
+        });
+
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+
+            if (file && file.name.endsWith('.m3u')) {
+                document.getElementById("loading").style.display = "block";
+                const reader = new FileReader();
+
+                reader.onload = function(e) {
+                    const data = e.target.result;
+                    const lines = data.split('\n');
+                    channels = [];  // Kanalları temizle
+
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].startsWith("#EXTINF")) {
+                            const channelName = lines[i].split(",")[1];
+                            const nextLine = lines[i + 1]?.trim();
+                            if (nextLine) {
+                                channels.push({ name: channelName, url: nextLine });
+                            }
+                        }
+                    }
+
+                    document.getElementById("loading").style.display = "none";
+                    currentPage = 0;
+                    showPage();
+                }
+
+                reader.readAsText(file);
+            } else {
+                alert("Lütfen geçerli bir M3U dosyası seçin.");
+            }
+        });
+
+        function showPage() {
+            const channelsList = document.getElementById("channels");
+            channelsList.innerHTML = '';  
+            const start = currentPage * itemsPerPage;
+            const end = Math.min(start + itemsPerPage, channels.length);
+
+            for (let i = start; i < end; i++) {
+                const li = document.createElement("li");
+                li.textContent = channels[i].name;
+                li.addEventListener("click", () => loadChannel(channels[i].url));
+                channelsList.appendChild(li);
+            }
+        }
+
+        document.getElementById('prevPage').addEventListener('click', function() {
+            if (currentPage > 0) {
+                currentPage--;
+                showPage();
+            }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', function() {
+            if ((currentPage + 1) * itemsPerPage < channels.length) {
+                currentPage++;
+                showPage();
+            }
+        });
+
+        function loadChannel(url) {
+            const video = document.getElementById("videoPlayer");
+            const videoSource = document.getElementById("videoSource");
+
+            document.getElementById("error").innerText = "";  
+
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, function () {
+                    video.play();
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.addEventListener('loadedmetadata', function () {
+                    video.play();
+                });
+            } else {
+                document.getElementById("error").innerText = "Bu formatı oynatmak için HLS desteği gerekiyor.";
+            }
+        }
+    </script>
+</body>
+</html>
